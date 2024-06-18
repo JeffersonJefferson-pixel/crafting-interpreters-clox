@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "vm.h"
+#include "compiler.h"
 #include "debug.h"
 
 VM vm;
@@ -23,6 +24,7 @@ Value pop() {
 }
 
 InterpretResult interpret(Chunk* chunk) {
+    compile(source);
     vm.chunk = chunk;
     vm.ip = vm.chunk->code;
     return run();
