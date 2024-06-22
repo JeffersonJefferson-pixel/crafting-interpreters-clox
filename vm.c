@@ -23,11 +23,9 @@ Value pop() {
     return *vm.stackTop;
 }
 
-InterpretResult interpret(Chunk* chunk) {
+InterpretResult interpret(const char* source) {
     compile(source);
-    vm.chunk = chunk;
-    vm.ip = vm.chunk->code;
-    return run();
+    return INTERPRET_OK;
 }
 
 static InterpretResult run() {

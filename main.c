@@ -7,24 +7,6 @@
 #include "debug.h"
 #include "vm.h"
 
-int main(int argc, const char* argv[]) {
-    initVM();
-
-    Chunk chunk;
-    initChunk(&chunk);
-    
-    if (argc == 1) {
-        repl();
-    } else if (argc == 2) {
-        runFile(argv[1]);
-    } else {
-        fprintf(stderr, "Usage: clox [path]\n");
-    }
-
-    freeVM();
-    return 0;
-}
-
 static void repl() {
     char line[1024];
     for (;;) {
@@ -72,4 +54,22 @@ static void runFile(const char* path) {
 
     if (result == INTERPRET_COMPILE_ERROR) exit(65);
     if (result == INTERPRET_RUNTIME_ERROR) exit(70);
+}
+
+int main(int argc, const char* argv[]) {
+    initVM();
+
+    Chunk chunk;
+    initChunk(&chunk);
+    
+    if (argc == 1) {
+        repl();
+    } else if (argc == 2) {
+        runFile(argv[1]);
+    } else {
+        fprintf(stderr, "Usage: clox [path]\n");
+    }
+
+    freeVM();
+    return 0;
 }
