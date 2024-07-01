@@ -6,4 +6,6 @@ build
 
 *.pdb
 
+*.exe
+
 *.ilk
