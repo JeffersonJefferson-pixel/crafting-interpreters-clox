@@ -31,7 +31,7 @@ ObjString* copyString(const char* chars, int length);
 void printObject(Value value);
 
 static inline bool isObjType(Value value, ObjType type) {
-    return IS_OBJ(value) && OBJ_TYPE(value) == type;
+  return IS_OBJ(value) && OBJ_TYPE(value) == type;
 }
 
 #endif
