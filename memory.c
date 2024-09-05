@@ -8,7 +8,7 @@ void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
         free(pointer);
         return NULL;
     }
-
+    // everything is copied over.
     void* result = realloc(pointer, newSize);
     if (result == NULL) exit(1);
     return result;
