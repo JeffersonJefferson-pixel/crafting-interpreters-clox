@@ -17,11 +17,22 @@ void freeTable(Table* table) {
 static Entry* findEntry(Entry* entries, int capacity, ObjString* key) {
     // index where ideally we'll find the entry
     uint32_t index = key->hash % capacity;
+    Entry* tombstone = NULL;
     // infinite loop is impossible assuming capacity is adjusted at max_load.
     for (;;) {
         Entry* entry = &entries[index];
-        // if bucket is empty or has the same key, we are done.
-        if (entry->key == key || entry->key == NULL) {
+        if (entry->key == NULL) {
+            if (IS_NIL(entry->value)) {
+                // empty entry, we are done.
+                // if passed tombstone, reuse it.
+                return tombstone != NULL ? tombstone: entry; 
+            } else {
+                // found a tombstone, continue.
+                if (tombstone == NULL) tombstone = entry;
+            }
+        }
+        if (entry->key == key) {
+            // found the entry
             return entry;
         }
         // probe due to collision.
@@ -38,6 +49,8 @@ static void adjustCapacity(Table* table, int capacity) {
         entries[i].value = NIL_VAL;
     }
 
+    table->count = 0;
+
     // rebuild hash table due to new capacity.
     for (int i = 0; i < table->capacity; i++) {
         Entry* entry = &table->entries[i];
@@ -46,6 +59,7 @@ static void adjustCapacity(Table* table, int capacity) {
         Entry * dest = findEntry(entries, capacity, entry->key);
         dest->key = entry->key;
         dest->value = entry->value;
+        table->count++;
     }
 
     // release memory for the old array.
@@ -76,12 +90,27 @@ bool tableSet(Table* table, ObjString* key, Value value) {
     // find entry in hash table by key
     Entry* entry = findEntry(table->entries, table->capacity, key);
     bool isNewKey = entry->key == NULL;
-    // increase count if new key
-    if (isNewKey) table->count++;
+    // increase count if new key and it goes to an empty bucket (not a tombstone).
+    if (isNewKey && IS_NIL(entry->value)) table->count++;
     // set entry's key and value
     entry->key = key;
     entry->value = value;
     return isNewKey;
+}
+
+bool tableDelete(Table* table, ObjString* key) {
+    // check if table is empty.
+    if (table->count == 0) return false;
+
+    // find the entry.
+    Entry* entry = findEntry(table->entries, table->capacity, key);
+    if (entry->key == NULL) return false;
+
+    // place a tombstone in the entry.
+    entry->key = NULL;
+    entry->value = BOOL_VAL(true);
+    // table's count doesn't decrease due to tombstone.
+    return true;
 }
 
 void tableAddAll(Table* from, Table* to) {

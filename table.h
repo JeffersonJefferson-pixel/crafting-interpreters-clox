@@ -13,6 +13,7 @@ typedef struct {
 } Entry;
 
 typedef struct {
+    // number of entries and tombstones.
     int count;
     int capacity;
     Entry* entries;
@@ -24,6 +25,8 @@ void freeTable(Table* table);
 bool tableGet(Table* table, ObjString* key, Value* value);
 // add key/value to hash table.
 bool tableSet(Table* table, ObjString* key, Value value);
+// remove an entry from hash table.
+bool tableDelete(Table* table, ObjString* key);
 // copy all entries of one hash table to another.
 void tableAddAll(Table* from, Table* to);
 
