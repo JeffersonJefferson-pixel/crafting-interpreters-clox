@@ -18,9 +18,13 @@ static void resetStack() {
 void initVM() {
     resetStack();
     vm.objects = NULL;
+    initTable(&vm.strings);
 }
 
+// clean up resources used by vm.
 void freeVM() {
+    // free internal strings hash table.
+    freeTable(&vm.strings);
     freeObjects();
 }
 
