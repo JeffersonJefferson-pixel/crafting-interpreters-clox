@@ -12,6 +12,7 @@ typedef struct {
     uint8_t* ip;
     Value stack[STACK_MAX];
     Value* stackTop;
+    Table globals; // hash table for gloabl variables. 
     Table strings; // hash table of internal strings.
     Obj* objects;
 } VM;
