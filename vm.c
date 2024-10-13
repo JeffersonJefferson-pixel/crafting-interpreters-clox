@@ -132,6 +132,21 @@ static InterpretResult run() {
             case OP_TRUE: push(BOOL_VAL(true)); break;
             case OP_FALSE: push(BOOL_VAL(false)); break;
             case OP_POP: pop(); break;
+            case OP_GET_LOCAL: {
+                // get stack slot where local variable lives.
+                uint8_t slot = READ_BYTE();
+                // load local variable value from the index and push on top of stack.
+                push(vm.stack[slot]);
+                break;
+            }
+            case OP_SET_LOCAL: {
+                // takes value from top of the stack 
+                // and stores in stack slot corresponding to the local variable
+                uint8_t slot = READ_BYTE();
+                vm.stack[slot] = peek(0);
+                // it doesn't pop the value.
+                break;
+            }
             case OP_GET_GLOBAL: {
                 // get variable name.
                 ObjString* name = READ_STRING();
