@@ -3,13 +3,24 @@
 
 #include "chunk.h"
 #include "value.h"
+#include "object.h"
 #include "table.h"
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+
+
+// a callframe represents a single ongoing function call.
+typedef struct {
+    ObjFunction* function;
+    uint8_t* ip; // caller's ip. when return from a function. the VM will jump to ip of the caller's callframe.
+    Value* slots; // points to the VM's stack at the first slot this function can use.
+} CallFrame;
 
 typedef struct {
-    Chunk* chunk;
-    uint8_t* ip;
+    CallFrame frames[FRAMES_MAX]; // function calls have stack semantics.
+    int frameCount; // stores current height of the callframe stack. it is the number of ongoing function calls.
+
     Value stack[STACK_MAX];
     Value* stackTop;
     Table globals; // hash table for gloabl variables. 
