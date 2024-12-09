@@ -41,6 +41,22 @@ static void runtimeError(const char* format, ...) {
     va_end(args);
     fputs("\n", stderr);
 
+    // stack trace
+    for (int i = vm.frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm.frames[i];
+        ObjFunction* function = frame->function;
+        // line number curresponding to current ip.
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        fprintf(stderr, "[line %d] in ", function->chunk.lines[instruction]);
+        if (function->name == NULL) {
+            fprintf(stderr, "script\n");
+        }else {
+            fprintf(stderr, "%s()\n", function->name->chars);
+        }
+
+        resetStack();
+    }
+
     // get topmost callframe.
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
     size_t instruction = frame->ip - frame->function->chunk.code - 1;
@@ -61,6 +77,43 @@ Value pop() {
 
 static Value peek(int distance) {
     return vm.stackTop[-1 - distance];
+}
+
+static bool call(ObjFunction* function, int argCount) {
+    // check number of argument against function arity.
+    if (argCount != function->arity) {
+        runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+        return false;
+    }
+
+    // ensure call chain depth doesn't overflow callframe array.
+    if (vm.frameCount == FRAMES_MAX) {
+        runtimeError("Stack overflow.");
+        return false;
+    }
+
+    // inialize callframe on the stack.
+    CallFrame* frame = &vm.frames[vm.frameCount++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    // minus 1 account for stack slot zero.
+    frame->slots = vm.stackTop - argCount - 1;
+    return true;
+}
+
+
+static bool callValue(Value callee, int argCount) {
+    // check if value being called is function object.
+    if (IS_OBJ(callee)) {
+        switch (OBJ_TYPE(callee)) {
+            case OBJ_FUNCTION:
+                return call(AS_FUNCTION(callee), argCount);
+            default:
+                break;
+        }
+    }
+    runtimeError("Can only call functions and classes");
+    return false;
 }
 
 static bool isFalsey(Value value) {
@@ -88,11 +141,8 @@ InterpretResult interpret(const char* source) {
 
     // push top-level function to vm stack.
     push(OBJ_VAL(function)); 
-    // create callframe for toplevel function.
-    CallFrame* frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
-    frame->ip = function->chunk.code;
-    frame->slots = vm.stack;
+    // call the top-level function.
+    call(function, 0);
 
     return run();
 }
@@ -239,9 +289,30 @@ static InterpretResult run() {
                 frame->ip -= offset;
                 break;
             }
+            case OP_CALL: {
+                // get function being called and number of arguments passed to the function.
+                int argCount = READ_BYTE();
+                if (!callValue(peek(argCount), argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // update current frame pointer. 
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_RETURN: {
-                // exit interpreter.
-                return INTERPRET_OK;
+                Value result = pop();
+                vm.frameCount--;
+                if (vm.frameCount == 0) {
+                    // exit interpreter.    
+                    pop();
+                    return INTERPRET_OK;
+                }
+                
+                // discard callee slots and back at the beginning of the returning function's stack window.
+                vm.stackTop = frame->slots;
+                push(result);
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
             }
         }
     }
