@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "common.h"
 #include "vm.h"
@@ -11,18 +12,14 @@
 
 VM vm;
 
+static Value clockNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
 static void resetStack() {
     vm.stackTop = vm.stack;
     // callframe stack is empty when vm starts up.
     vm.frameCount = 0;
-}
-
-void initVM() {
-    resetStack();
-    vm.objects = NULL;
-    initTable(&vm.strings);
-    // initialize global variable table.
-    initTable(&vm.globals);
 }
 
 // clean up resources used by vm.
@@ -63,6 +60,24 @@ static void runtimeError(const char* format, ...) {
     int line = frame->function->chunk.lines[instruction];
     fprintf(stderr, "[line %d] in script\n", line);
     resetStack();
+}
+
+static void defineNative(const char* name, NativeFn function) {
+    push(OBJ_VAL(copyString(name, (int)strlen(name))));
+    push(OBJ_VAL(newNative(function)));
+    tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    pop();
+    pop();
+}
+
+void initVM() {
+    resetStack();
+    vm.objects = NULL;
+    initTable(&vm.strings);
+    // initialize global variable table.
+    initTable(&vm.globals);
+
+    defineNative("clock", clockNative);
 }
 
 void push(Value value) {
@@ -108,6 +123,15 @@ static bool callValue(Value callee, int argCount) {
         switch (OBJ_TYPE(callee)) {
             case OBJ_FUNCTION:
                 return call(AS_FUNCTION(callee), argCount);
+            case OBJ_NATIVE: {
+                // invoke c function.
+                NativeFn native = AS_NATIVE(callee);
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= argCount + 1;
+                // push result back in stack.
+                push(result);
+                return true;
+            }
             default:
                 break;
         }

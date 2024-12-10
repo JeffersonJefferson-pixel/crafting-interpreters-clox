@@ -9,15 +9,19 @@
 
 // check if value is function object.
 #define IS_FUNCTION(value) isObjType(value, OBJ_FUNCTION)
+#define IS_NATIVE(value) isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value) isObjType(value, OBJ_STRING)
 
 // convert object value to function object.
 #define AS_FUNCTION(value) ((ObjFunction*)AS_OBJ(value))
 #define AS_STRING(value) ((ObjString*)AS_OBJ(value))
+#define AS_NATIVE(value) \
+    (((ObjNative*)AS_OBJ(value))->function)
 #define AS_CSTRING(value) (((ObjString*)AS_OBJ(value))->chars)
 
 typedef enum {
     OBJ_FUNCTION,
+    OBJ_NATIVE,
     OBJ_STRING,
 } ObjType;
 
@@ -33,6 +37,15 @@ typedef struct {
     ObjString* name; // function name.
 } ObjFunction;
 
+// native function takes argument count and pointer to first argument on the stack.
+typedef Value (*NativeFn)(int argCount, Value* args);
+
+// it doesn't push a callframe when called. it has no bytecode.
+typedef struct {
+    Obj obj; // Obj header
+    NativeFn function; // pointer to C function.
+} ObjNative;
+
 struct ObjString {
     Obj obj;
     int length;
@@ -42,6 +55,8 @@ struct ObjString {
 
 // create new function.
 ObjFunction* newFunction();
+// create native function.
+ObjNative* newNative(NativeFn function);
 ObjString* takeString(char* chars, int length);
 ObjString* copyString(const char* chars, int length);
 void printObject(Value value);
