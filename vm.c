@@ -194,7 +194,7 @@ static InterpretResult run() {
                 printf(" ]");
             }
             printf("\n");
-            disassembleInstruction(&frame->chunk->function->chunk, (int)(frame->ip - frame->closure->function->chunk->code));
+            disassembleInstruction(&frame->closure->function->chunk, (int)(frame->ip - frame->closure->function->chunk.code));
         #endif
 
         uint8_t instruction;
@@ -383,7 +383,7 @@ InterpretResult interpret(const char* source) {
     pop();
     push(OBJ_VAL(closure));
     // call the top-level function.
-    call(function, 0);
+    call(closure, 0);
 
     return run();
 }
