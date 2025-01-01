@@ -9,3 +9,7 @@ build
 *.exe
 
 *.ilk
+
+*.gch
+
+main

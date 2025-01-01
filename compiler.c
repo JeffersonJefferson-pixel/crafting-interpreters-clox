@@ -43,6 +43,11 @@ typedef struct {
   int depth;
 } Local;
 
+typedef struct {
+  uint8_t index; // slot index of closed-over local variable.
+  bool isLocal;
+} Upvalue;
+
 typedef enum {
   TYPE_FUNCTION,
   TYPE_SCRIPT
@@ -55,6 +60,7 @@ typedef struct {
 
   Local locals[UINT8_COUNT];
   int localCount; // how many locals are in scope.
+  Upvalue upvalues[UINT8_COUNT]; // upvalue array.
   int scopeDepth; // number of blocks surrouding the current bit of code being compiled.
 } Compiler;
 
@@ -245,6 +251,7 @@ static bool identifiersEqual(Token* a, Token* b) {
 }
 
 static int resolveLocal(Compiler* compiler, Token* name) {
+  // loop through block scopes for the current function from innermost to outermost.
   for (int i = compiler->localCount - 1; i >= 0; i--) {
     Local* local = &compiler->locals[i];
     if (identifiersEqual(name, &local->name)) {
@@ -253,6 +260,47 @@ static int resolveLocal(Compiler* compiler, Token* name) {
       }
       return i;
     }
+  }
+
+  return -1;
+}
+
+static int addUpvalue(Compiler* compiler, uint8_t index, bool isLocal) {
+  int upvalueCount = compiler->function->upvalueCount;
+  
+  // check if function has upvalue that closes over the variable.
+  for (int i = 0; i < upvalueCount; i++) {
+    Upvalue* upvalue = &compiler->upvalues[i];
+    if (upvalue->index == index && upvalue->isLocal == isLocal) {
+      return i;
+    }
+  }
+
+  // limit number of upvalue.
+  if (upvalueCount == UINT8_COUNT) {
+    error("Too many closure variables in function.");
+    return 0;
+  }
+
+  // add new upvalue to compiler's upvalue array and increase upvalue count.
+  compiler->upvalues[upvalueCount].isLocal = isLocal;
+  compiler->upvalues[upvalueCount].index = index;
+  return compiler->function->upvalueCount++;
+}
+
+static int resolveUpvalue(Compiler* compiler, Token* name) {
+  if (compiler->enclosing == NULL) return -1;
+
+  // resolve the identifier as local variable in enclosing compiler.
+  int local = resolveLocal(compiler->enclosing, name);
+  if (local != -1) {
+    return addUpvalue(compiler, (uint8_t)local, true);
+  }
+
+  // a function captures either a local or upvalue from immediately surrounding function.
+  int upvalue = resolveUpvalue(compiler->enclosing, name);
+  if (upvalue != -1) {
+    return addUpvalue(compiler, (uint8_t) upvalue, false);
   }
 
   return -1;
@@ -428,7 +476,16 @@ static void function(FunctionType type) {
 
   ObjFunction* function = endCompiler();
   // store function object as constant in surrounding function's constant table.
-  emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+  uint8_t constant = makeConstant(OBJ_VAL(function));
+  // emit instruction to tell vm to create closure object to wrap function object.
+  emitBytes(OP_CLOSURE, constant);
+
+  //emit upvalues
+  // op_closure has variable-sized encoding.
+  for (int i = 0; i < function->upvalueCount; i++) {
+    emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+    emitByte(compiler.upvalues[i].index);
+  }
 }
 
 static void funDeclaration() {
@@ -647,9 +704,15 @@ static void namedVariable(Token name, bool canAssign) {
   uint8_t getOp, setOp;
   int arg = resolveLocal(current, &name);
   if (arg != -1) {
+    // found local in some block scope.
     getOp = OP_GET_LOCAL;
     setOp = OP_SET_LOCAL;
+  } else if ((arg = resolveUpvalue(current, &name)) != -1 ) {
+    // found local variable declared in surrounding functions.
+    getOp = OP_GET_UPVALUE;
+    setOp = OP_SET_UPVALUE;
   } else {
+    // assume global variable.
     arg = identifierConstant(&name);
     getOp = OP_GET_GLOBAL;
     setOp = OP_SET_GLOBAL;

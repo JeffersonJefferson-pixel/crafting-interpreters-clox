@@ -12,7 +12,7 @@
 
 // a callframe represents a single ongoing function call.
 typedef struct {
-    ObjFunction* function;
+    ObjClosure* closure;
     uint8_t* ip; // caller's ip. when return from a function. the VM will jump to ip of the caller's callframe.
     Value* slots; // points to the VM's stack at the first slot this function can use.
 } CallFrame;
