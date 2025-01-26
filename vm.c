@@ -20,6 +20,7 @@ static void resetStack() {
     vm.stackTop = vm.stack;
     // callframe stack is empty when vm starts up.
     vm.frameCount = 0;
+    vm.openUpvalues = NULL;
 }
 
 // clean up resources used by vm.
@@ -142,8 +143,39 @@ static bool callValue(Value callee, int argCount) {
 }
 
 static ObjUpvalue* captureUpvalue(Value* local) {
+    // look for existing upvalue in open upvalues list before closing over a local variable.
+    ObjUpvalue* prevUpvalue = NULL;
+    ObjUpvalue* upvalue = vm.openUpvalues;
+    while (upvalue != NULL && upvalue->location > local) {
+        prevUpvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    // found existing upvalue for the local variable.
+    if (upvalue != NULL && upvalue->location == local) {
+        return upvalue;
+    }
+
     ObjUpvalue* createdUpvalue = newUpvalue(local);
+    // insert upvalue to open upvalues list.
+    if (prevUpvalue == NULL) {
+        vm.openUpvalues = createdUpvalue;
+    } else {
+        prevUpvalue->next = createdUpvalue;
+    }
+
     return createdUpvalue;
+}
+
+static void closeUpvalues(Value* last) {
+    while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
+        ObjUpvalue* upvalue = vm.openUpvalues;
+        // copy variable value
+        upvalue->closed = *upvalue->location;
+        // update location of upvalue object.
+        upvalue->location = &upvalue->closed;
+        vm.openUpvalues = upvalue->next;
+    }
 }
 
 static bool isFalsey(Value value) {
@@ -347,8 +379,15 @@ static InterpretResult run() {
                 }
                 break;
             }
+            case OP_CLOSE_UPVALUE:
+                closeUpvalues(vm.stackTop - 1);
+                // discard stack slot.
+                pop();
+                break;
             case OP_RETURN: {
                 Value result = pop();
+                // closes over outermost block scope that defines a function body.
+                closeUpvalues(frame->slots);
                 vm.frameCount--;
                 if (vm.frameCount == 0) {
                     // exit interpreter.    

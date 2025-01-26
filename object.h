@@ -56,6 +56,8 @@ typedef struct {
 typedef struct ObjUpvalue {
     Obj obj;
     Value* location;
+    Value closed; // closed upvalue on heap.
+    struct ObjUpvalue* next; // pointer to the next upvalue in the linked list.
 } ObjUpvalue;
 
 struct ObjString {
