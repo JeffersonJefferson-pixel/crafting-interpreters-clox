@@ -27,6 +27,9 @@ typedef struct {
     Table strings; // hash table of internal strings.
     ObjUpvalue* openUpvalues; // head pointer of upvalues list.
     Obj* objects;
+    int grayCount;
+    int grayCapacity;
+    Obj** grayStack; // worklist to keep track of gray objects.
 } VM;
 
 typedef enum {

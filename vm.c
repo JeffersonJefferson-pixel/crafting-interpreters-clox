@@ -74,6 +74,12 @@ static void defineNative(const char* name, NativeFn function) {
 void initVM() {
     resetStack();
     vm.objects = NULL;
+
+    // initialize gray stack.
+    vm.grayCount = 0;
+    vm.grayCapacity = 0;
+    vm.grayStack = NULL;
+
     initTable(&vm.strings);
     // initialize global variable table.
     initTable(&vm.globals);
