@@ -43,7 +43,7 @@ void markObject(Obj* object) {
         vm.grayCapacity = GROW_CAPACITY(vm.grayCapacity);
         // calls system realloc.
         // gray stack not managed by GC.
-        vm.grayStack - (Obj**)realloc(vm.grayStack, sizeof(Obj*) * vm.grayCapacity);
+        vm.grayStack = (Obj**)realloc(vm.grayStack, sizeof(Obj*) * vm.grayCapacity);
         // abort on allocation failure
         if (vm.grayStack == NULL) exit(1); 
     }
@@ -180,13 +180,44 @@ static void traceReferences() {
     }
 }
 
+static void sweep() {
+    Obj* previous = NULL;
+    Obj* object = vm.objects;
+    while (object != NULL) {
+        if (object->isMarked) {
+            // skip black object.
+            // reset black object.
+            object->isMarked = false;
+            previous = object;
+            object = object->next;
+        } else {
+            // unlink white object from the list
+            Obj* unreached = object;
+            object = object->next;
+            if (previous != NULL) {
+                previous->next = object;
+            } else {
+                // free first node.
+                vm.objects = object;
+            }
+
+            // free white object.
+            freeObject(unreached);
+
+        }
+    }
+}
+
 void collectGarbage() {
 #ifdef DEBUG_LOG_GC
-    pritnf("-- gc begin\n");
+    printf("-- gc begin\n");
 #endif
 
     markRoots();
     traceReferences();
+    // remove string object in vm string table.
+    tableRemoveWhite(&vm.strings);
+    sweep();
 
 #ifdef DEBUG_LOG_GC
     printf("-- gc end\n");

@@ -55,8 +55,8 @@ typedef enum {
   TYPE_SCRIPT
 } FunctionType;
 
-typedef struct {
-  struct Compiler* enclosing; // compiler points back to the compiler of function that encloses it.
+typedef struct Compiler_ {
+  struct Compiler_* enclosing; // compiler points back to the compiler of function that encloses it.
   ObjFunction* function;
   FunctionType type;
 

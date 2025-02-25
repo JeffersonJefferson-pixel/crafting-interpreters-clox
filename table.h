@@ -31,6 +31,9 @@ bool tableDelete(Table* table, ObjString* key);
 void tableAddAll(Table* from, Table* to);
 // look for string in a hash table.
 ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t hash);
+// remove string object in table for gc.
+void tableRemoveWhite(Table* table);
+// mark key and value in table for gc.
 void markTable(Table* table);
 
 #endif
