@@ -64,8 +64,11 @@ static ObjString* allocateString(char* chars, int length, uint32_t hash) {
     string->length = length;
     string->chars = chars;
     string->hash = hash;
+    // push string object to stack temporarily.
+    push(OBJ_VAL(string));
     // set string in internal strings hash table.
     tableSet(&vm.strings, string, NIL_VAL);
+    pop();
     return string;
 }
 

@@ -26,6 +26,10 @@ typedef struct {
     Table globals; // hash table for gloabl variables. 
     Table strings; // hash table of internal strings.
     ObjUpvalue* openUpvalues; // head pointer of upvalues list.
+
+    size_t bytesAllocated;
+    size_t nextGC;
+
     Obj* objects;
     int grayCount;
     int grayCapacity;
