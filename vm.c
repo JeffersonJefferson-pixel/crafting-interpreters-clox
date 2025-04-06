@@ -130,6 +130,12 @@ static bool callValue(Value callee, int argCount) {
     // check if value being called is function object.
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
+            case OBJ_CLASS: {
+                // create instance of the called class
+                ObjClass* klass = AS_CLASS(callee);
+                vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
+                return true;
+            }
             // handle closure.
             case OBJ_CLOSURE:
                 return call(AS_CLOSURE(callee), argCount); 
@@ -307,6 +313,44 @@ static InterpretResult run() {
                 *frame->closure->upvalues[slot]->location = peek(0);
                 break;
             }
+            case OP_GET_PROPERTY: {
+                // check if instance
+                if (!IS_INSTANCE(peek(0))) {
+                    runtimeError("Only instances have properties");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // instance is at top of the stack.
+                ObjInstance* instance = AS_INSTANCE(peek(0));
+                // get field name from constant.
+                ObjString* name = READ_STRING();
+
+                Value value;
+                // lookup instance field table.
+                if (tableGet(&instance->fields, name, &value)) {
+                    pop(); // instnace.
+                    push(value);
+                    break;
+                }
+
+                runtimeError("undefined property '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            case OP_SET_PROPERTY: {
+                // check if instance
+                if (!IS_INSTANCE(peek(1))) {
+                    runtimeError("Only instances have fields.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // value being set at top of the stack.
+                // instance below value.
+                ObjInstance* instance = AS_INSTANCE(peek(1));
+                tableSet(&instance->fields, READ_STRING(), peek(0));
+                // pop instance, keep value
+                Value value = pop();
+                pop(); // instance
+                push(value);
+                break;
+            }
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();
@@ -412,6 +456,10 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_CLASS:
+                // get class name from constant table and create class object. 
+                push(OBJ_VAL(newClass(READ_STRING())));
+                break;
         }
     }
 

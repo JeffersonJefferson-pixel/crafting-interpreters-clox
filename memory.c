@@ -89,6 +89,14 @@ static void blackenObject(Obj* object) {
             ObjFunction* function = (ObjFunction*)object;
             markObject((Obj*)function->name);
             markArray(&function->chunk.constants);
+            break;
+        }
+        case OBJ_INSTANCE: {
+            // mark instance class and field table.
+            ObjInstance* instance = (ObjInstance*)object;
+            markObject((Obj*)instance->klass);
+            markTable(&instance->fields);
+            break;
         }
         case OBJ_UPVALUE:
             // trace reference to closed-over value from upvalue.
@@ -106,6 +114,12 @@ static void freeObject(Obj* object) {
         printf("%p free type %d\n", (void*)object, object->type);
     #endif
     switch (object->type) {
+        case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*)object;
+            markObject((Obj*)klass->name);    
+            FREE(ObjClass, object);
+            break;
+        }
         // handle closure object.
         case OBJ_CLOSURE: {
             ObjClosure* closure = (ObjClosure*)object;
@@ -121,6 +135,14 @@ static void freeObject(Obj* object) {
             // free function object's chunk.
             freeChunk(&function->chunk);
             FREE(ObjFunction, object);
+            break;
+        }
+        // free instance object.
+        case OBJ_INSTANCE: {
+            ObjInstance* instance = (ObjInstance*)object;
+            // free instance field table.
+            freeTable(&instance->fields);
+            FREE(ObjInstance, object);
             break;
         }
         // handle native function object.
