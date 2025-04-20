@@ -89,7 +89,8 @@ typedef struct {
 
 typedef struct {
     Obj obj;
-    ObjString* name;
+    ObjString* name; // class name.
+    Table methods; // class methods.
 } ObjClass;
 
 typedef struct {

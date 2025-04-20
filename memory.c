@@ -116,8 +116,10 @@ static void freeObject(Obj* object) {
     switch (object->type) {
         case OBJ_CLASS: {
             ObjClass* klass = (ObjClass*)object;
-            markObject((Obj*)klass->name);    
+            freeTable(&klass->methods);
             FREE(ObjClass, object);
+            markObject((Obj*)klass->name);
+            markTable(&klass->methods);
             break;
         }
         // handle closure object.
