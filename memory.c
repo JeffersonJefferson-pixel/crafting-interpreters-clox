@@ -74,6 +74,17 @@ static void blackenObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_BOUND_METHOD: {
+            ObjBoundMethod* bound = (ObjBoundMethod*)object;
+            markValue(bound->receiver);
+            markObject((Obj*)bound->method);
+        }
+        case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*)object;
+            markObject((Obj*)klass->name);
+            markTable(&klass->methods);
+            break;
+        }
         case OBJ_CLOSURE: {
             // closure has reference to function it wraps and array of pointer to upvalues it captures.
             ObjClosure* closure = (ObjClosure*)object;
@@ -114,12 +125,14 @@ static void freeObject(Obj* object) {
         printf("%p free type %d\n", (void*)object, object->type);
     #endif
     switch (object->type) {
+        case OBJ_BOUND_METHOD:
+            ObjBoundMethod* bound = (ObjBoundMethod*)object;
+            FREE(ObjBoundMethod, object);
+            break;
         case OBJ_CLASS: {
             ObjClass* klass = (ObjClass*)object;
             freeTable(&klass->methods);
             FREE(ObjClass, object);
-            markObject((Obj*)klass->name);
-            markTable(&klass->methods);
             break;
         }
         // handle closure object.

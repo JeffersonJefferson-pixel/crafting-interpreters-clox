@@ -8,6 +8,8 @@
 
 #define OBJ_TYPE(value) (AS_OBJ(value)->type)
 
+// check if value is bound method.
+#define IS_BOUND_METHOD(value) isObjType(value, OBJ_BOUND_METHOD)
 // check if value is class object.
 #define IS_CLASS(value) isObjType(value, OBJ_CLASS)
 // check if value is closure object.
@@ -19,6 +21,8 @@
 #define IS_NATIVE(value) isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value) isObjType(value, OBJ_STRING)
 
+// convert to bound method.
+#define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
 // convert value to class object.
 #define AS_CLASS(value) ((ObjClass*)AS_OBJ(value))
 // convert object value to closure object.
@@ -33,6 +37,7 @@
 #define AS_CSTRING(value) (((ObjString*)AS_OBJ(value))->chars)
 
 typedef enum {
+    OBJ_BOUND_METHOD,
     OBJ_CLASS,
     OBJ_CLOSURE,
     OBJ_FUNCTION,
@@ -99,6 +104,15 @@ typedef struct {
     Table fields; // state of instance by hash table.
 } ObjInstance;
 
+typedef struct {
+    Obj obj;
+    Value receiver;
+    ObjClosure* method;
+} ObjBoundMethod;
+
+
+// create bound method.
+ObjBoundMethod* newBoundMethod(Value receiver, ObjClosure* method);
 // create new class.
 ObjClass* newClass(ObjString* name);
 // create new closure.
