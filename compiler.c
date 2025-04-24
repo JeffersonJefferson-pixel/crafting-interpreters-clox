@@ -52,6 +52,8 @@ typedef struct {
 
 typedef enum {
   TYPE_FUNCTION,
+  TYPE_INITIALIZER,
+  TYPE_METHOD,
   TYPE_SCRIPT
 } FunctionType;
 
@@ -66,8 +68,15 @@ typedef struct Compiler_ {
   int scopeDepth; // number of blocks surrouding the current bit of code being compiled.
 } Compiler;
 
+// class compiler forms a linked list from innermost class being compiled to all of the enclosing class.
+typedef struct ClassCompiler {
+  struct ClassCompiler* enclosing;
+} ClassCompiler;
+
 Parser parser;
 Compiler* current = NULL;
+// current class being compiled.
+ClassCompiler* currentClass = NULL;
 Chunk* compilingChunk;
 
 static Chunk* currentChunk() {
@@ -158,8 +167,13 @@ static void emitLoop(int loopStart) {
 }
 
 static void emitReturn() {
-  // implicitly return nil.
-  emitByte(OP_NIL);
+  // return this if compiling initializer
+  if (current->type == TYPE_INITIALIZER) {
+    emitBytes(OP_GET_LOCAL, 0);
+  } else {
+    // implicitly return nil.
+    emitByte(OP_NIL);
+  }
   emitByte(OP_RETURN);
 }
 
@@ -203,8 +217,13 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
   Local* local = &current->locals[current->localCount++];
   local->depth = 0;
   local->isCaptured = false;
-  local->name.start = "";
-  local->name.length = 0;
+  if (type != TYPE_FUNCTION) {
+    local->name.start = "this";
+    local->name.length = 4;
+  } else {
+    local->name.start = "";
+    local->name.length = 0;
+  }
 }
 
 static ObjFunction* endCompiler() {
@@ -443,6 +462,10 @@ static void dot(bool canAssign) {
   if (canAssign && match(TOKEN_EQUAL)) {
     expression();
     emitBytes(OP_SET_PROPERTY, name);
+  } else if (match(TOKEN_LEFT_PAREN)) {
+    uint8_t argCount = argumentList();
+    emitBytes(OP_INVOKE, name);
+    emitByte(argCount);
   } else {
     emitBytes(OP_GET_PROPERTY, name);
   }
@@ -516,10 +539,42 @@ static void method() {
   consume(TOKEN_IDENTIFIER, "Expect method name.");
   uint8_t constant = identifierConstant(&parser.previous);
 
-  FunctionType type = TYPE_FUNCTION;
+  FunctionType type = TYPE_METHOD;
+  // check if is initializer
+  if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4)) {
+    type = TYPE_INITIALIZER;
+  }
   function(type);
 
   emitBytes(OP_METHOD, constant);
+}
+
+
+
+static void namedVariable(Token name, bool canAssign) {
+  uint8_t getOp, setOp;
+  int arg = resolveLocal(current, &name);
+  if (arg != -1) {
+    // found local in some block scope.
+    getOp = OP_GET_LOCAL;
+    setOp = OP_SET_LOCAL;
+  } else if ((arg = resolveUpvalue(current, &name)) != -1 ) {
+    // found local variable declared in surrounding functions.
+    getOp = OP_GET_UPVALUE;
+    setOp = OP_SET_UPVALUE;
+  } else {
+    // assume global variable.
+    arg = identifierConstant(&name);
+    getOp = OP_GET_GLOBAL;
+    setOp = OP_SET_GLOBAL;
+  }
+
+  if (canAssign && match(TOKEN_EQUAL)) {
+    expression();
+    emitBytes(setOp, (uint8_t)arg);
+  } else {
+    emitBytes(getOp, (uint8_t)arg);
+  }
 }
 
 static void classDeclaration() {
@@ -536,6 +591,11 @@ static void classDeclaration() {
   // so it can be referred inside bodies of its own method
   defineVariable(nameConstant);
 
+  // update current class.
+  ClassCompiler classCompiler;
+  classCompiler.enclosing = currentClass;
+  currentClass = &classCompiler;
+
   namedVariable(className, false);
   consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
   // compile methods.
@@ -543,7 +603,10 @@ static void classDeclaration() {
     method();
   }
   consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
-  emit(OP_POP);
+  emitByte(OP_POP);
+
+  // reset current class.
+  currentClass = currentClass->enclosing;
 }
 
 static void funDeclaration() {
@@ -592,6 +655,9 @@ static void returnStatement() {
     // return value not provided.
     emitReturn();
   } else {
+    if (current->type == TYPE_INITIALIZER) {
+      error("Can't return a value from initizalizer");
+    }
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
     emitByte(OP_RETURN);
@@ -760,34 +826,12 @@ static void string(bool canAssign) {
   emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 
-static void namedVariable(Token name, bool canAssign) {
-  uint8_t getOp, setOp;
-  int arg = resolveLocal(current, &name);
-  if (arg != -1) {
-    // found local in some block scope.
-    getOp = OP_GET_LOCAL;
-    setOp = OP_SET_LOCAL;
-  } else if ((arg = resolveUpvalue(current, &name)) != -1 ) {
-    // found local variable declared in surrounding functions.
-    getOp = OP_GET_UPVALUE;
-    setOp = OP_SET_UPVALUE;
-  } else {
-    // assume global variable.
-    arg = identifierConstant(&name);
-    getOp = OP_GET_GLOBAL;
-    setOp = OP_SET_GLOBAL;
-  }
-
-  if (canAssign && match(TOKEN_EQUAL)) {
-    expression();
-    emitBytes(setOp, (uint8_t)arg);
-  } else {
-    emitBytes(getOp, (uint8_t)arg);
-  }
-}
-
 static void variable(bool canAssign) {
   namedVariable(parser.previous, canAssign);
+}
+
+static void this_(bool canAssign) {
+  variable(false);
 }
 
 static void unary(bool canAssign) {
@@ -839,7 +883,7 @@ ParseRule rules[] = {
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_THIS]          = {this_,     NULL,   PREC_NONE},
   [TOKEN_TRUE]          = {literal,     NULL,   PREC_NONE},
   [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},

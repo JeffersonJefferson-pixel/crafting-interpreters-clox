@@ -83,6 +83,8 @@ void initVM() {
     vm.grayStack = NULL;
 
     initTable(&vm.strings);
+    vm.initString = NULL;
+    vm.initString = copyString("init", 4);
     // initialize global variable table.
     initTable(&vm.globals);
 
@@ -130,10 +132,23 @@ static bool callValue(Value callee, int argCount) {
     // check if value being called is function object.
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
+            case OBJ_BOUND_METHOD: {
+                ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                // put instance at top of stack.
+                vm.stackTop[-argCount - 1] = bound->receiver;
+                return call(bound->method, argCount);
+            }
             case OBJ_CLASS: {
                 // create instance of the called class
                 ObjClass* klass = AS_CLASS(callee);
                 vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
+                // initialize instance.
+                Value initializer;
+                if (tableGet(&klass->methods, vm.initString, &initializer)) {
+                    return call(AS_CLOSURE(initializer), argCount);
+                } else if (argCount != 0) {
+                    runtimeError("Expected 0 arguments but go %d.", argCount);
+                }
                 return true;
             }
             // handle closure.
@@ -154,6 +169,48 @@ static bool callValue(Value callee, int argCount) {
     }
     runtimeError("Can only call functions and classes");
     return false;
+}
+
+static bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount) {
+    Value method;
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+    return call(AS_CLOSURE(method), argCount);
+}
+
+static bool invoke(ObjString* name, int argCount) {
+    Value receiver = peek(argCount);
+    // check if instance
+    if (!IS_INSTANCE(receiver)) {
+        runtimeError("Only instances have methods");
+        return false;
+    }
+    
+    Value value;
+    ObjInstance* instance = AS_INSTANCE(receiver);
+    // get field incase not method call.
+    if (tableGet(&instance->fields, name, &value)) {
+        vm.stackTop[-argCount - 1] = value;
+        return callValue(value, argCount);
+    }
+
+    return invokeFromClass(instance->klass, name, argCount);
+}
+
+static bool bindMethod(ObjClass* klass, ObjString* name) {
+    Value method;
+    // find method in class
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+    // wrap method in bound method with instance from top of the stack.
+    ObjBoundMethod* bound = newBoundMethod(peek(0), AS_CLOSURE(method));
+    pop();
+    push(OBJ_VAL(bound));
+    return true;
 }
 
 static ObjUpvalue* captureUpvalue(Value* local) {
@@ -340,6 +397,12 @@ static InterpretResult run() {
                     break;
                 }
 
+                // handle bound method.
+                if (!bindMethod(instance->klass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+
                 runtimeError("undefined property '%s'.", name->chars);
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -420,6 +483,15 @@ static InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 // update current frame pointer. 
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
+            case OP_INVOKE: {
+                ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+                if (!invoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }

@@ -25,6 +25,7 @@ typedef struct {
     Value* stackTop;
     Table globals; // hash table for gloabl variables. 
     Table strings; // hash table of internal strings.
+    ObjString* initString;
     ObjUpvalue* openUpvalues; // head pointer of upvalues list.
 
     size_t bytesAllocated;
