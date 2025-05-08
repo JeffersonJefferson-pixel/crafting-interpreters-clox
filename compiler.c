@@ -71,6 +71,7 @@ typedef struct Compiler_ {
 // class compiler forms a linked list from innermost class being compiled to all of the enclosing class.
 typedef struct ClassCompiler {
   struct ClassCompiler* enclosing;
+  bool hasSuperclass;
 } ClassCompiler;
 
 Parser parser;
@@ -577,38 +578,6 @@ static void namedVariable(Token name, bool canAssign) {
   }
 }
 
-static void classDeclaration() {
-  consume(TOKEN_IDENTIFIER, "Expect class name.");
-  Token className = parser.previous;
-  // add class name to constant table.
-  uint8_t nameConstant = identifierConstant(&parser.previous);
-  // bind class object to a variable.
-  declareVariable();
-
-  // emit instruction to create class object at runtime.
-  emitBytes(OP_CLASS, nameConstant);
-  // define variable before class body 
-  // so it can be referred inside bodies of its own method
-  defineVariable(nameConstant);
-
-  // update current class.
-  ClassCompiler classCompiler;
-  classCompiler.enclosing = currentClass;
-  currentClass = &classCompiler;
-
-  namedVariable(className, false);
-  consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
-  // compile methods.
-  while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
-    method();
-  }
-  consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
-  emitByte(OP_POP);
-
-  // reset current class.
-  currentClass = currentClass->enclosing;
-}
-
 static void funDeclaration() {
   // function declaration creates and stores funciton as variable.
   uint8_t global = parseVariable("Expect function name.");
@@ -776,22 +745,6 @@ static void synchronize() {
   }
 }
 
-static void declaration() {
-  if (match(TOKEN_CLASS)) {
-    classDeclaration();
-  } else if (match(TOKEN_FUN)) {
-    // handle function declaration
-    funDeclaration();
-  } else if (match(TOKEN_VAR)) {
-    varDeclaration();
-  } else {
-    statement();
-  }
-
-  // synchronization
-  if (parser.panicMode) synchronize();
-}
-
 static void statement() {
   if (match(TOKEN_PRINT)) {
     printStatement();
@@ -828,6 +781,107 @@ static void string(bool canAssign) {
 
 static void variable(bool canAssign) {
   namedVariable(parser.previous, canAssign);
+}
+
+static Token syntheticToken(const char* text) {
+  Token token;
+  token.start = text;
+  token.length = (int)strlen(text);
+  return token;
+}
+
+
+
+static void classDeclaration() {
+  consume(TOKEN_IDENTIFIER, "Expect class name.");
+  Token className = parser.previous;
+  // add class name to constant table.
+  uint8_t nameConstant = identifierConstant(&parser.previous);
+  // bind class object to a variable.
+  declareVariable();
+
+  // emit instruction to create class object at runtime.
+  emitBytes(OP_CLASS, nameConstant);
+  // define variable before class body 
+  // so it can be referred inside bodies of its own method
+  defineVariable(nameConstant);
+
+  // update current class.
+  ClassCompiler classCompiler;
+  classCompiler.enclosing = currentClass;
+  classCompiler.hasSuperclass = false;
+  currentClass = &classCompiler;
+
+  // check for inheritance.
+  if (match(TOKEN_LESS)) {
+    consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+    // push superclass and subclass value on stack.
+    variable(false);
+
+    // prevent inheriting from self.
+    if (identifiersEqual(&className, &parser.previous)) {
+      error("A class can't inherit from itself.");
+    }
+
+    // subclass has a local variable referencing to its superclass
+    beginScope();
+    addLocal(syntheticToken("super"));
+    defineVariable(0);
+
+    namedVariable(className, false);
+    emitByte(OP_INHERIT);
+    classCompiler.hasSuperclass = true;
+  }
+
+  namedVariable(className, false);
+  consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+  // compile methods.
+  while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+    method();
+  }
+  consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+  emitByte(OP_POP);
+
+  if (classCompiler.hasSuperclass) {
+    endScope();
+  }
+
+  // reset current class.
+  currentClass = currentClass->enclosing;
+}
+
+static void declaration() {
+  if (match(TOKEN_CLASS)) {
+    classDeclaration();
+  } else if (match(TOKEN_FUN)) {
+    // handle function declaration
+    funDeclaration();
+  } else if (match(TOKEN_VAR)) {
+    varDeclaration();
+  } else {
+    statement();
+  }
+
+  // synchronization
+  if (parser.panicMode) synchronize();
+}
+
+static void super_(bool canAssign) {
+  // check if in class with superclass.
+  if (currentClass == NULL) {
+    error("Can't user 'super' outside of a class.");
+  } else if (!currentClass->hasSuperclass) {
+    error("Can't use 'super' in a class with no superclass.");
+  }
+  // not a super call expression, it is super access expression.
+  consume(TOKEN_DOT, "Expect '.' after 'super'.");
+  consume(TOKEN_IDENTIFIER, "Expcet superclass method name.");
+  uint8_t name = identifierConstant(&parser.previous);
+
+  // get superclass and the receiver and push on stack.
+  namedVariable(syntheticToken("this"), false);
+  namedVariable(syntheticToken("super"), false);
+  emitBytes(OP_GET_SUPER, name);
 }
 
 static void this_(bool canAssign) {
@@ -882,7 +936,7 @@ ParseRule rules[] = {
   [TOKEN_OR]            = {NULL,     or_,   PREC_OR},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_SUPER]         = {super_,     NULL,   PREC_NONE},
   [TOKEN_THIS]          = {this_,     NULL,   PREC_NONE},
   [TOKEN_TRUE]          = {literal,     NULL,   PREC_NONE},
   [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
