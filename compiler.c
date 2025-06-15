@@ -880,8 +880,19 @@ static void super_(bool canAssign) {
 
   // get superclass and the receiver and push on stack.
   namedVariable(syntheticToken("this"), false);
-  namedVariable(syntheticToken("super"), false);
-  emitBytes(OP_GET_SUPER, name);
+  
+  // fast supercall
+  if (match(TOKEN_LEFT_PAREN)) {
+    uint8_t argCount = argumentList();
+    namedVariable(syntheticToken("super"), false);
+    // combine op_get_super ad op_callp[p]
+    emitBytes(OP_SUPER_INVOKE, name);
+    emitByte(argCount);
+  } else {
+    namedVariable(syntheticToken("super"), false);
+    emitBytes(OP_GET_SUPER, name);
+  }
+
 }
 
 static void this_(bool canAssign) {

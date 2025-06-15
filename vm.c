@@ -173,10 +173,12 @@ static bool callValue(Value callee, int argCount) {
 
 static bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount) {
     Value method;
+    // look up method in class.
     if (!tableGet(&klass->methods, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
+    // create a call to the method.
     return call(AS_CLOSURE(method), argCount);
 }
 
@@ -505,6 +507,16 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_SUPER_INVOKE: {
+                ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+                ObjClass* superclass = AS_CLASS(pop());
+                if (!invokeFromClass(superclass, method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_CLOSURE: {
                 // load compiled function from constant table.
                 ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
@@ -557,6 +569,7 @@ static InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 ObjClass* subclass = AS_CLASS(peek(0));
+                // copy superclass methods to subclass
                 tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
                 pop();
                 break;
