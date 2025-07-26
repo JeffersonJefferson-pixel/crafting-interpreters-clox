@@ -542,7 +542,7 @@ static void method() {
 
   FunctionType type = TYPE_METHOD;
   // check if is initializer
-  if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4)) {
+  if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4) == 0) {
     type = TYPE_INITIALIZER;
   }
   function(type);

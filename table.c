@@ -19,7 +19,8 @@ void freeTable(Table* table) {
 // find entry for either a lookup and an insert.
 static Entry* findEntry(Entry* entries, int capacity, ObjString* key) {
     // index where ideally we'll find the entry
-    uint32_t index = key->hash % capacity;
+    // bitmasking faster than modulo
+    uint32_t index = key->hash & (capacity - 1);
     Entry* tombstone = NULL;
     // infinite loop is impossible assuming capacity is adjusted at max_load.
     for (;;) {
@@ -40,7 +41,7 @@ static Entry* findEntry(Entry* entries, int capacity, ObjString* key) {
             return entry;
         }
         // probe due to collision.
-        index = (index + 1) % capacity; // modulo operator to wrap back to the beginning.
+        index = (index + 1) & (capacity - 1); // modulo operator to wrap back to the beginning.
     }
 }
 
@@ -131,7 +132,7 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
 
     // similar to findEntry.
     // but this looks at actual strings.
-    uint32_t index = hash % table->capacity;
+    uint32_t index = hash & (table->capacity - 1);
     for (;;) {
         Entry* entry = &table->entries[index];
         if (entry->key == NULL) {
@@ -143,7 +144,7 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
             return entry->key;
         }
 
-        index = (index + 1) % table->capacity;
+        index = (index + 1) & (table->capacity - 1);
     }
 }
 
